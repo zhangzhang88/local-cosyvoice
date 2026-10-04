@@ -1,51 +1,163 @@
 # local-cosyvoice
 
-本仓库用于备份我的本地个人声音 TTS 工作流。
+一个基于 **CosyVoice3 + speech CLI** 的本地个人声音 TTS 工作流。
 
-核心流程：
+目标：把 Markdown 文章转换成自己的声音朗读，并支持长文章分块、时间定位和局部修复。
 
-1. 使用 speech CLI + CosyVoice3 做声音克隆与 TTS。
-2. Markdown 先清理为朗读文本，再做数字朗读规范化。
-3. 长文本按较小语义块生成，每块独立输出 WAV。
-4. 使用本地 Qwen3-ASR 0.6B 4bit 对每块做完整性校验。
-5. FAIL 块只重试当前块，并切换 seed；PASS / REVIEW 块不重复生成。
-6. 所有块满足合并条件后，用 ffmpeg 合成为最终 WAV。
+## 功能
 
-## 主要文件
+- 个人声音克隆 TTS
+- Markdown 转朗读文本
+- 数字朗读规范化
+- 长文章自动分 Block
+- 保存每个 Block WAV
+- 生成 `timeline.md` 定位问题位置
+- 只重新生成有问题的 Block
+- 用户确认后重新合并最终 WAV
 
-- skill/SKILL.md：当前正在使用的 Pi / Agent Skill 规则备份。
+## 工作流程
+
+```text
+Markdown
+  ↓
+朗读文本整理
+  ↓
+Block 分段
+  ↓
+生成 Block WAV
+  ↓
+timeline.md
+  ↓
+合并最终 WAV
+```
 
 ## 硬件要求
 
-本项目当前以 **Apple Silicon Mac** 为主要支持目标。推荐配置：
+当前主要支持 Apple Silicon Mac：
 
-- **推荐起点：M1 / M2 / M3 / M4 + 16GB 统一内存**
-- **更宽裕：24GB 或以上统一内存**，适合同时运行浏览器、Agent、TTS 和 ASR
-- **8GB：可以尝试，但不作为推荐配置**，长文本任务时余量更小
-- **Intel Mac：不作为本项目当前推荐目标**
-- **磁盘空间：至少预留 10GB，可用空间 20GB 以上更合适**
+- 推荐：M1 / M2 / M3 / M4 + 16GB 统一内存
+- 更推荐：24GB 以上，适合同时运行 Agent、浏览器和 TTS
+- 8GB：可以尝试，但不推荐长文本任务
+- Intel Mac：未作为主要目标验证
+- 磁盘：建议预留 20GB 以上
 
-仓库作者当前已验证的参考机器是 **Mac mini M4 16GB**。M1 16GB 级别的 Apple Silicon 机器可作为较低的推荐档位，但不同芯片、散热、后台负载和模型版本都会影响速度，不能保证与 M4 16GB 有相同表现。
+已验证机器：Mac mini M4 16GB。
 
-本地模型、缓存、分块 WAV 和 ASR 诊断记录都会持续占用磁盘空间，因此磁盘余量通常比单纯看 CPU 更容易被忽略。
+## 安装
 
-## 本机依赖
+### 1. 安装依赖
 
-当前工作流依赖本机已经安装或缓存的：
+需要：
 
 - speech CLI
 - CosyVoice3
-- Qwen3-ASR 0.6B 4bit
 - ffmpeg
 
-这些模型、虚拟环境和第三方源码不会提交到本仓库。
+例如：
+
+```bash
+brew install ffmpeg
+```
+
+`speech` 和模型安装请根据当前环境和 CLI 文档配置。
+
+### 2. 准备自己的声音
+
+需要：
+
+- 约 20–30 秒参考录音
+- 对应 transcript
+
+不要把个人声音上传到 GitHub。
+
+### 3. 安装 Skill
+
+复制：
+
+```bash
+mkdir -p ~/.agents/skills/my-voice-tts
+cp skill/SKILL.md ~/.agents/skills/my-voice-tts/SKILL.md
+```
+
+然后修改其中的个人路径配置。
+
+## 使用
+
+提供 Markdown 文件，然后让 Agent 调用 Skill。
+
+长文本生成后会得到：
+
+```text
+records/
+├── block-001/
+├── block-002/
+├── timeline.md
+├── manifest.json
+└── reading-text.txt
+```
+
+## 如何修复某一段
+
+试听最终 WAV 时，如果发现：
+
+> 4:18 左右读错了
+
+直接告诉 Agent。
+
+它会：
+
+1. 根据 `timeline.md` 找到对应 Block
+2. 生成新的 attempt
+3. 提供试听
+4. 用户确认后更新版本
+5. 重新合并最终 WAV
+
+不会重新生成整篇文章。
+
+## 常见问题
+
+### 生成失败
+
+检查：
+
+- speech CLI 是否可用
+- ffmpeg 是否安装
+- 模型缓存是否存在
+- 磁盘空间是否足够
+
+### 速度慢
+
+第一次运行通常需要加载模型。
+
+速度会受到：
+
+- 芯片型号
+- 内存
+- 后台程序
+- 模型版本
+
+影响。
 
 ## 隐私
 
-个人参考声音、生成的 WAV、Speech Studio 安装包、ASR 虚拟环境、第三方 whisper.cpp 源码均通过 .gitignore 排除，不上传 GitHub。
+不要提交：
 
-如果要在另一台电脑恢复使用，需要重新准备自己的参考声音，并根据新机器路径调整 skill/SKILL.md 中的本地配置。
+- 个人参考声音
+- 生成 WAV
+- 模型文件
+- API Key / Token
+- 本地缓存
 
-## Agent 接管与安装
+## 给 Agent 的接管说明
 
-如果你把这个仓库地址交给另一个 Agent，请让它先完整阅读 `AGENTS.md`，里面包含接管、安装、配置、验收和日常操作流程。
+如果另一个 Agent 接手本仓库：
+
+1. 先阅读 `README.md`
+2. 再阅读 `AGENTS.md`
+3. 最后阅读 `skill/SKILL.md`
+
+不要直接修改系统环境。
+不要上传个人声音。
+不要下载额外模型，除非用户明确同意。
+
+详细 Agent 工作规则见 `AGENTS.md`。
