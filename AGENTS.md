@@ -1,246 +1,166 @@
 # AGENTS.md
 
-本文件用于让新的 Agent 快速接管 `local-cosyvoice`，以及让任何拿到本仓库地址的人，能够让自己的 Agent 在 Apple Silicon Mac 上复现这套本地个人声音 TTS 工作流。
+本文件面向接手 `local-cosyvoice` 的 AI Agent。普通用户安装和使用请先看 `README.md`；真正的 TTS 执行规则以 `skill/SKILL.md` 为准。
 
-## 1. 项目目标
+## 1. 接管顺序
 
-这个仓库不是模型仓库，也不是要把个人声音上传到 GitHub。
+接手后先只读检查，不要立即改文件或安装依赖：
 
-目标是维护一条可复用的本地工作流：
+1. 阅读 `README.md`，理解项目定位、安装方式和用户工作流。
+2. 阅读 `AGENTS.md`，理解 Agent 约束。
+3. 完整阅读 `skill/SKILL.md`，以它作为运行规则来源。
+4. 检查 Git 状态、分支、remote 和最近提交。
+5. 检查本机是否已有：
+   - `speech`
+   - `ffmpeg`
+   - CosyVoice3 缓存
+   - 用户自己的参考音频与准确 transcript
+6. 不要假设仓库作者机器上的绝对路径在另一台机器仍然有效。
 
-1. 使用 `speech` CLI + CosyVoice3 做个人声音 TTS。
-2. Markdown 转朗读文本，并做十进制数字朗读规范化。
-3. 长文本按较小语义块独立生成 WAV。
-4. 用本地 Qwen3-ASR 0.6B 4bit 对每块做内容完整性校验。
-5. FAIL 块只重试当前块，并切换 seed；PASS / REVIEW 块不重复生成。
-6. 所有块满足门槛后，用 ffmpeg 合成最终 WAV。
+如果只是接管作者现有机器，优先复用已有环境、缓存和参考声音；不要重复安装或下载。
 
-核心规则位于：
+## 2. 当前工作流
+
+当前默认流程：
+
+- 使用 `speech` CLI + CosyVoice3 做个人声音 TTS。
+- Markdown 先转成朗读文本并做数字朗读规范化。
+- 长文本切成较小语义 Block。
+- 每个 Block 独立生成并持久保留 WAV。
+- 默认不使用 ASR。
+- 首次每个 Block 使用 seed 42。
+- 生成 `timeline.md`，把最终音频时间点映射到 Block。
+- 用户人工试听后，如果指出某个时间点或 Block 有问题，只重生成该 Block。
+- 第一次人工修复使用 seed 43，第二次使用 seed 44。
+- 新 attempt 生成后，先把新 Block WAV 路径给用户试听。
+- **只有用户确认“正确”后，才更新 manifest、重算 timeline，并重新合并最终 WAV。**
+- 用户说“不正确”时，继续使用下一 seed；不要覆盖旧 attempt。
+
+不要自行把 ASR、二次识别、投票或其他复杂校验重新加回默认流程。
+
+## 3. 文件职责
+
+- `README.md`：面向普通用户，介绍安装、使用、Block/timeline 和常见问题。
+- `AGENTS.md`：面向 AI Agent，说明接管、边界和维护规则。
+- `skill/SKILL.md`：正式执行规则。运行 TTS 时以它为准。
+
+不要把 README 的安装教程重复塞进 Skill，也不要让 AGENTS 复制整份 README。
+
+## 4. 安装到另一台 Mac 时
+
+当前主要目标是 Apple Silicon Mac。
+
+如果需要帮助新用户安装：
+
+- 先确认硬件、可用磁盘和现有环境。
+- 缺少 Homebrew、`speech`、`ffmpeg` 或模型时，先告诉用户会发生什么，再执行安装或下载。
+- 不要顺手下载额外模型。
+- 默认流程不需要 Qwen3-ASR 或 ForcedAligner。
+- 每个用户必须使用自己的参考声音和逐字对应 transcript。
+
+安装 Skill 时，可将仓库里的：
 
 `skill/SKILL.md`
 
-## 2. 接管项目时先做什么
+复制到宿主 Agent 的 Skill 目录，例如：
 
-新的 Agent 接管后，先只读检查，不要直接改文件：
+`~/.agents/skills/my-voice-tts/SKILL.md`
 
-1. 阅读 `README.md`。
-2. 完整阅读 `AGENTS.md`。
-3. 完整阅读 `skill/SKILL.md`。
-4. 检查 Git 状态、当前分支、remote 和最近提交。
-5. 检查本机是否已有 `speech`、`ffmpeg`、参考音频、CosyVoice3 缓存和 Qwen3-ASR 缓存。
-6. 不要假设仓库作者机器上的绝对路径在新机器上仍然有效。
+然后只修改本机相关配置，例如：
 
-若只是接管现有作者机器，优先复用已有安装、模型缓存和参考声音，不重复下载或安装。
+- 参考音频路径
+- reference transcript
+- CLI 路径
+- 用户自己的风格预设
 
-## 3. 仓库里有什么，什么不会提交
+不要把用户的个人声音复制回仓库。
 
-仓库应包含：
+## 5. 首次验收
 
-- `README.md`
-- `AGENTS.md`
-- `skill/SKILL.md`
-- 后续必要的脚本、配置模板和文档
+不要直接从长文章开始。
 
-仓库不应包含：
+先验证短文本：
+
+- 能否正常生成 WAV
+- 声音是否像用户本人
+- 语速是否可接受
+- 参考声音与 transcript 是否匹配
+
+然后再做长文本验收：
+
+- Markdown 清理是否正确
+- 数字/百分比朗读规范化是否正确
+- 80–200 字符左右的语义分块是否完整覆盖全文
+- 每个 Block WAV 是否保留并能单独试听
+- 首次 seed 是否统一为 42
+- `timeline.md` 是否准确映射最终时间点和 Block
+- 用户指出问题后，是否只生成对应 Block 的新 attempt
+- 新 attempt 是否先给用户试听
+- 未经用户确认时，是否保持当前 manifest/timeline/最终 WAV 不变
+- 用户确认后，是否正确更新 manifest、重算 timeline 并重新合并
+
+## 6. 日常修复行为
+
+如果用户说：
+
+> 4:18 左右读错了
+
+Agent 应：
+
+1. 读取当前任务的 `timeline.md`。
+2. 找到唯一对应 Block。
+3. 读取该 Block 的文本和 manifest 状态。
+4. 只生成该 Block 的下一 attempt。
+5. 给用户新的 Block WAV 路径试听。
+6. 等待用户明确确认。
+
+如果用户回复：
+
+> 正确
+
+再：
+
+1. 更新 manifest 当前选用 attempt。
+2. 重新读取所有当前选用 Block 的实际时长。
+3. 重算完整 `timeline.md`。
+4. 重新合并一个新的最终 WAV。
+5. 验证最终 WAV 并报告新路径。
+
+如果用户回复：
+
+> 不正确
+
+则使用下一 seed 只重生成同一个 Block，不更新最终版本。
+
+如果时间点正好落在 Block 边界、无法唯一定位，才需要向用户确认。
+
+## 7. 隐私与禁止提交
+
+仓库不能包含：
 
 - 个人参考声音
 - 生成的 WAV / MP3
-- Python 虚拟环境
-- 模型权重和模型缓存
+- 模型权重和缓存
+- Python/虚拟环境
 - Speech Studio 安装包
-- 第三方源码完整 checkout，例如 `.whisper-cpp/`
+- 第三方完整源码 checkout
 - API Key、Token、密码或其他秘密
 
-提交前检查 `.gitignore`，并确认 `git status` 里没有个人音频、大模型、缓存、安装包或秘密文件。
+提交前检查 `.gitignore` 和 `git status`。
 
-## 4. 在另一台 Apple Silicon Mac 上安装
+不要因为调试方便就把个人音频或模型临时提交进 Git。
 
-### 4.1 前提
+## 8. 修改原则
 
-本项目当前按 Apple Silicon Mac 设计。其他平台不要直接照搬，先验证兼容性。
+- 优先简单、可解释、可复现。
+- 先确认真实问题，再改 Skill。
+- 不因为一次听感问题就增加复杂自动规则。
+- 不自动删除用户可能需要试听或回退的 Block attempt。
+- 不更换模型，除非用户明确要求。
+- 修改正式 Skill 后，要同步仓库里的 `skill/SKILL.md` 备份。
+- 修改执行逻辑时，README / AGENTS / Skill 中相关说明要保持一致。
+- 不要把文档调整扩散成无关代码重构。
 
-推荐先检查：
+## 9. 给新 Agent 的最短接管指令
 
-```bash
-uname -m
-sw_vers
-which brew
-which speech
-which ffmpeg
-```
-
-
-### 4.1.1 硬件要求
-
-当前推荐目标是 Apple Silicon Mac。给用户安装前，先根据本机配置判断是否适合：
-
-- **推荐起点：M1 / M2 / M3 / M4 + 16GB 统一内存**
-- **24GB 或以上：**有更多余量，可同时运行浏览器、Agent、TTS 和 ASR
-- **8GB：**允许尝试，但不要把它描述成推荐配置；长文本任务可用内存更紧张
-- **Intel Mac：**当前文档不推荐，除非单独完成兼容性验证
-- **可用磁盘：至少 10GB，推荐 20GB 以上**
-
-仓库作者已验证的参考机器是 **Mac mini M4 16GB**。可以把 **M1 16GB 级别 Apple Silicon** 视为较低的推荐档位，但不得承诺与 M4 16GB 相同的生成速度。实际表现会受芯片代际、散热、后台任务、模型缓存和版本影响。
-
-模型、缓存、每块 WAV、ASR 转写和 records 诊断目录都会占用磁盘空间。安装前若可用空间不足，应先告知用户，不要默默下载大模型。
-
-### 4.2 安装基础 CLI
-
-如果 Homebrew 尚未安装，先让用户决定是否安装 Homebrew；不要静默修改系统。
-
-已有 Homebrew 后：
-
-```bash
-brew install speech
-brew install ffmpeg
-```
-
-安装后检查：
-
-```bash
-speech --help
-speech speak --help
-speech transcribe --help
-ffmpeg -version
-```
-
-参数以本机 `--help` 为准，不要凭记忆猜测。
-
-### 4.3 准备个人参考声音
-
-每个使用者都必须使用自己的参考声音，不能直接复用仓库作者的声音。
-
-建议准备：
-
-- 一段约 20–30 秒、环境安静、自然语速的参考录音
-- 与录音逐字对应的 reference transcript
-
-参考音频与 transcript 必须准确对应。
-
-把参考音频放在使用者自己选择的本地路径，不要提交 Git。
-
-### 4.4 准备模型
-
-当前工作流依赖：
-
-- CosyVoice3
-- Qwen3-ASR 0.6B 4bit
-
-新机器第一次配置时，先检查本机缓存是否已存在。若缺失模型，Agent 必须先告诉用户将发生模型下载，并在得到用户明确同意后再下载所需模型；不要顺手下载额外模型。
-
-Qwen3-ASR 当前目标模型：
-
-`aufklarer/Qwen3-ASR-0.6B-MLX-4bit`
-
-不要默认安装 ForcedAligner，当前工作流并不依赖它。
-
-## 5. 安装 Skill
-
-本仓库的 `skill/SKILL.md` 是可迁移规则，但其中可能包含仓库作者机器上的本地绝对路径和作者自己的 reference transcript。
-
-在另一台机器上使用时：
-
-1. 复制 `skill/SKILL.md` 到该 Agent 的 Skill 目录，例如：
-
-   ```bash
-   mkdir -p ~/.agents/skills/my-voice-tts
-   cp skill/SKILL.md ~/.agents/skills/my-voice-tts/SKILL.md
-   ```
-
-2. 修改复制后的 Skill，而不是仓库里的原模板，至少替换：
-
-   - 参考音频绝对路径
-   - reference transcript
-   - 如有需要，CLI 路径
-   - 个人风格预设
-
-3. 不要把使用者的参考音频复制回 Git 仓库。
-
-4. 如果宿主 Agent 的 Skill 目录不是 `~/.agents/skills/`，按该 Agent 的实际 Skill 机制安装。
-
-## 6. 首次验收
-
-不要一上来就跑长文章。
-
-### 阶段 A：短文本
-
-先用一小段普通中文测试：
-
-- 是否成功生成 WAV
-- 是否像使用者本人
-- 语速是否可接受
-- 是否能正常使用参考声音和 reference transcript
-
-### 阶段 B：风格
-
-测试 A–E 菜单是否正常，尤其确认：
-
-- A 自然模式不传 `--cosy-instruct`
-- D 个人知识旁白是否符合使用者听感
-
-### 阶段 C：长文本
-
-再选一篇约 2000–4000 字、包含数字、英文缩写、标题和多个自然段的真实文章。
-
-验证：
-
-- Markdown 清理是否正确
-- 十进制规范化是否正确
-- 80–200 字符语义分块是否完整覆盖全文
-- 每块是否执行 Qwen3-ASR 校验
-- FAIL 是否只重试当前块
-- 初始 seed 是否统一，重试是否切换 seed
-- 有未解决 FAIL 时是否阻止最终合并
-- 最终 WAV 是否可正常播放
-
-## 7. 当前已验证的关键行为
-
-以下结论来自当前项目的真实测试，不要随意删除：
-
-- 长文本即使命令退出码为 0，也可能静默漏读句子或段落。
-- 仅靠把块切小不能彻底避免漏读，所以必须保留 ASR 自检层。
-- 整体覆盖率很高也可能漏掉一个完整短句，因此逐句检查是硬要求。
-- Qwen3-ASR 对中文完整性检查速度足够快，适合作为本地验收层。
-- 专名、缩写可能被 ASR 错识，因此存在 REVIEW 状态，不能把所有差异都判 FAIL。
-- 相同文本 + 相同参数 + 相同 seed 可以得到完全相同的 PCM；所以 FAIL 重试必须换 seed。
-- 当前长文默认 base seed 为 42，第一次和第二次 FAIL 重试分别使用 43、44。
-- 固定 seed 提高可复现性，但不能保证不同语义块之间语速完全一致。
-
-## 8. 日常使用方式
-
-安装完成后，理想交互应该非常简单。
-
-用户只需要提供文本或 Markdown 文件，并说类似：
-
-> 用我的声音生成 TTS。
-
-Agent 应读取 Skill，然后显示 A–E 菜单，等待用户明确选择后再生成。
-
-长文完成后必须报告：
-
-- 最终 WAV 路径
-- 总块数
-- PASS / REVIEW / FAIL 统计
-- 重试块及 seed 序列
-- TTS 耗时
-- ASR 耗时
-- 最终音频时长
-- records 诊断目录
-
-## 9. 修改项目的原则
-
-- 优先简单、可解释、可复现，不要过度工程化。
-- 先验证问题，再修改 Skill。
-- 不因为一次听感问题就增加复杂规则。
-- 不自动删除诊断记录。
-- 不上传个人声音和生成音频。
-- 不用新的模型替换现有模型，除非用户明确要求。
-- 修改 Skill 后应同步更新仓库中的 `skill/SKILL.md` 备份，再提交 Git。
-
-## 10. 给另一个 Agent 的最短接管指令
-
-如果用户只把本仓库地址交给你，可以按下面执行：
-
-> 克隆并阅读这个仓库的 README.md、AGENTS.md 和 skill/SKILL.md。先只读检查当前 Mac 环境，不修改系统。确认 speech、ffmpeg、CosyVoice3、Qwen3-ASR 和个人参考声音是否存在。缺少任何安装或模型下载时先告诉用户并取得同意。然后把 skill/SKILL.md 安装到本机 Agent 的 Skill 目录，替换为用户自己的参考音频路径、逐字 transcript 和个人风格预设。先做短文本测试，再做一篇 2000–4000 字长文测试，必须保留每块 ASR 完整性校验和 FAIL 局部重试。不要上传个人声音、生成音频、模型、缓存或秘密到 Git。
-
-完成安装后，再进入日常“用我的声音生成 TTS”的使用流程。
+> 阅读 README.md、AGENTS.md 和 skill/SKILL.md，先只读检查环境和 Git 状态。确认 speech、ffmpeg、CosyVoice3 缓存和用户自己的参考声音是否存在。缺少安装或模型时先说明并取得用户同意。默认不使用 ASR。长文本保留每个 Block、timeline 和 manifest；用户指出某处错误时，只生成对应 Block 的新 attempt，先让用户试听，确认正确后才更新 manifest、timeline 并重新合并。不要上传个人声音、生成音频、模型、缓存或秘密。
