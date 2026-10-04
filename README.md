@@ -31,3 +31,7 @@
 个人参考声音、生成的 WAV、Speech Studio 安装包、ASR 虚拟环境、第三方 whisper.cpp 源码均通过 .gitignore 排除，不上传 GitHub。
 
 如果要在另一台电脑恢复使用，需要重新准备自己的参考声音，并根据新机器路径调整 skill/SKILL.md 中的本地配置。
+
+## Agent 接管与安装
+
+如果你把这个仓库地址交给另一个 Agent，请让它先完整阅读 `AGENTS.md`，里面包含接管、安装、配置、验收和日常操作流程。
