@@ -1,0 +1,26 @@
+.DS_Store
+
+# Local Python / ASR environments
+.asr-venv/
+.venv/
+venv/
+
+# Third-party source checkouts used only during experiments
+.whisper-cpp/
+
+# Installers and downloaded packages
+*.dmg
+*.pkg
+*.zip
+
+# Personal voice references and generated audio
+*.mp3
+*.wav
+*.m4a
+*.aac
+*-records/
+
+# Local caches / temp files
+.cache/
+tmp/
+temp/
